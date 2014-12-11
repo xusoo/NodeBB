@@ -191,8 +191,7 @@ Loader.start = function(callback) {
 
 function forkWorker(isPrimary) {
 	var worker = cluster.fork({
-			cluster_setup: isPrimary,
-			handle_jobs: isPrimary
+			isPrimary: isPrimary
 		}),
 		output = logrotate({ file: __dirname + '/logs/output.log', size: '1m', keep: 3, compress: true });
 
