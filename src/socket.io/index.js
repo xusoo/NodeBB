@@ -24,21 +24,19 @@ var io;
 Sockets.init = function(server) {
 	requireModules();
 
-	io = new SocketIO({
-		path: nconf.get('relative_path') + '/socket.io'
-	});
+	var config = {
+		log: true,
+		'log level': process.env.NODE_ENV === 'development' ? 2 : 0,
+		transports: ['websocket', 'xhr-polling', 'jsonp-polling', 'flashsocket'],
+		'browser client minification': true,
+		resource: nconf.get('relative_path') + '/socket.io'
+	};
 
-	addRedisAdapter(io);
+	addRedisAdapter(config);
 
-	io.use(socketioWildcard);
-	io.use(authorize);
+	io = socketioWildcard(SocketIO).listen(server, config);
 
 	io.on('connection', onConnection);
-
-	io.listen(server, {
-		pingTimeout: 30,
-		transports: ['websocket', 'polling']
-	});
 
 	Sockets.server = io;
 };
@@ -48,7 +46,13 @@ function onConnection(socket) {
 
 	logger.io_one(socket, socket.uid);
 
-	onConnect(socket);
+	authorize(socket, function(err) {
+		if (err) {
+			return winston.error(err.stack);
+		}
+
+		onConnect(socket);
+	});
 
 	socket.on('disconnect', function() {
 		onDisconnect(socket);
@@ -110,8 +114,8 @@ function onMessage(socket, payload) {
 		return winston.warn('[socket.io] Empty payload');
 	}
 
-	var eventName = payload.data[0];
-	var params = payload.data[1];
+	var eventName = payload.name;
+	var params = payload.args.length ? payload.args[0] : null;
 	var callback = typeof payload.data[payload.data.length - 1] === 'function' ? payload.data[payload.data.length - 1] : function() {};
 
 	if (!eventName) {
@@ -165,7 +169,7 @@ function requireModules() {
 }
 
 function authorize(socket, next) {
-	var handshake = socket.request,
+	var handshake = socket.handshake,
 		sessionID;
 
 	if (!handshake) {
@@ -194,15 +198,24 @@ function authorize(socket, next) {
 	});
 }
 
-function addRedisAdapter(io) {
+function addRedisAdapter(config) {
+	// If a redis server is configured, use it as a socket.io store, otherwise, fall back to in-memory store
 	if (nconf.get('redis')) {
-		var redisAdapter = require('socket.io-redis');
-		var redis = require('../database/redis');
-		var pub = redis.connect({return_buffers: true});
-		var sub = redis.connect({return_buffers: true});
+		var RedisStore = require('socket.io/lib/stores/redis'),
+			database = require('../database/redis'),
+			pub = database.connect(),
+			sub = database.connect(),
+			client = database.connect();
 
-		io.adapter(redisAdapter({pubClient: pub, subClient: sub}));
-	} else {
+		// "redis" property needs to be passed in as referenced here: https://github.com/Automattic/socket.io/issues/808
+		// Probably fixed in socket.IO 1.0
+		config.store = new RedisStore({
+			redis: require('redis'),
+			redisPub : pub,
+			redisSub : sub,
+			redisClient : client
+		});
+	} else if (nconf.get('cluster')) {
 		winston.warn('[socket.io] Clustering detected, you are advised to configure Redis as a websocket store.');
 	}
 }
