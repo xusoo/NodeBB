@@ -1,7 +1,7 @@
 "use strict";
 
 var	SocketIO = require('socket.io'),
-	socketioWildcard = require('socketio-wildcard')(),
+	socketioWildcard = require('socket.io-wildcard'),
 	util = require('util'),
 	async = require('async'),
 	path = require('path'),
@@ -42,7 +42,9 @@ Sockets.init = function(server) {
 };
 
 function onConnection(socket) {
-	socket.ip = socket.request.connection.remoteAddress;
+	var headers = socket.handshake.headers;
+
+	socket.ip = headers['x-forwarded-for'] || (socket.handshake.address || {}).address;
 
 	logger.io_one(socket, socket.uid);
 
@@ -58,8 +60,8 @@ function onConnection(socket) {
 		onDisconnect(socket);
 	});
 
-	socket.on('*', function(payload) {
-		onMessage(socket, payload);
+	socket.on('*', function(payload, callback) {
+		onMessage(socket, payload, callback);
 	});
 }
 
@@ -109,14 +111,14 @@ function onDisconnect(socket) {
 	}
 }
 
-function onMessage(socket, payload) {
-	if (!payload.data.length) {
-		return winston.warn('[socket.io] Empty payload');
+function onMessage(socket, payload, callback) {
+	if (!payload.name) {
+		return winston.warn('[socket.io] Empty method name');
 	}
 
 	var eventName = payload.name;
 	var params = payload.args.length ? payload.args[0] : null;
-	var callback = typeof payload.data[payload.data.length - 1] === 'function' ? payload.data[payload.data.length - 1] : function() {};
+	callback = callback || function() {};
 
 	if (!eventName) {
 		return winston.warn('[socket.io] Empty method name');
@@ -235,39 +237,36 @@ Sockets.in = function(room) {
 };
 
 Sockets.getSocketCount = function() {
-	// TODO: io.sockets.adapter.sids is local to this worker
-	// use redis-adapter
-
-	var clients = Object.keys(io.sockets.adapter.sids || {});
+	var clients = io.sockets.manager.rooms[''];
 	return Array.isArray(clients) ? clients.length : 0;
 };
 
 Sockets.getUserSocketCount = function(uid) {
-	// TODO: io.sockets.adapter.rooms is local to this worker
-	// use .clients('uid_' + uid, fn)
-
-	var roomClients = Object.keys(io.sockets.adapter.rooms['uid_' + uid] || {});
-	return Array.isArray(roomClients) ? roomClients.length : 0;
+	var roomClients = io.sockets.manager.rooms['/uid_' + uid];
+	if(!Array.isArray(roomClients)) {
+		return 0;
+	}
+	return roomClients.length;
 };
 
 Sockets.getOnlineAnonCount = function () {
-	// TODO: io.sockets.adapter.rooms is local to this worker
-	// use .clients()
-
-	var guestSocketIds = Object.keys(io.sockets.adapter.rooms.online_guests || {});
-	return Array.isArray(guestSocketIds) ? guestSocketIds.length : 0;
+	var guestRoom = io.sockets.manager.rooms['/online_guests'];
+	if (!Array.isArray(guestRoom)) {
+		return 0;
+	}
+	return guestRoom.length;
 };
 
 Sockets.reqFromSocket = function(socket) {
-	var headers = socket.request.headers,
+	var headers = socket.handshake.headers,
 		host = headers.host,
 		referer = headers.referer || '';
 
 	return {
-		ip: headers['x-forwarded-for'] || socket.ip,
+		ip: headers['x-forwarded-for'] || (socket.handshake.address || {}).address,
 		host: host,
-		protocol: socket.request.connection.encrypted ? 'https' : 'http',
-		secure: !!socket.request.connection.encrypted,
+		protocol: headers.secure ? 'https' : 'http',
+		secure: !!headers.secure,
 		url: referer,
 		path: referer.substr(referer.indexOf(host) + host.length),
 		headers: headers
@@ -275,13 +274,18 @@ Sockets.reqFromSocket = function(socket) {
 };
 
 Sockets.isUserOnline = function(uid) {
-	// TODO: io.sockets.adapter.rooms is local to this worker
-	// use .clients('uid_' + uid, fn)
-	return io ? !!io.sockets.adapter.rooms['uid_' + uid] : false;
+	if (!io) {
+		// Special handling for install script (socket.io not initialised)
+		return false;
+	}
+
+	return Array.isArray(io.sockets.manager.rooms['/uid_' + uid]);
 };
 
 Sockets.isUsersOnline = function(uids, callback) {
-	callback(null, uids.map(Sockets.isUserOnline));
+	var data = uids.map(Sockets.isUserOnline);
+
+	callback(null, data);
 };
 
 Sockets.getUsersInRoom = function (uid, roomName, callback) {
@@ -316,20 +320,18 @@ Sockets.getUsersInRoom = function (uid, roomName, callback) {
 };
 
 Sockets.getUidsInRoom = function(roomName) {
-	// TODO : doesnt work in cluster
-
 	var uids = [];
-
-	var socketids = Object.keys(io.sockets.adapter.rooms[roomName] || {});
-	if (!Array.isArray(socketids) || !socketids.length) {
+	roomName = roomName ? '/' + roomName : '';
+	var socketids = io.sockets.manager.rooms[roomName];
+	if (!Array.isArray(socketids)) {
 		return [];
 	}
 
 	for(var i=0; i<socketids.length; ++i) {
-		var socketRooms = Object.keys(io.sockets.adapter.sids[socketids[i]]);
+		var socketRooms = Object.keys(io.sockets.manager.roomClients[socketids[i]]);
 		if (Array.isArray(socketRooms)) {
 			socketRooms.forEach(function(roomName) {
-				if (roomName.indexOf('uid_') === 0 ) {
+				if (roomName.indexOf('/uid_') === 0 ) {
 					uids.push(roomName.split('_')[1]);
 				}
 			});

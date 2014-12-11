@@ -82,7 +82,7 @@ SocketMeta.rooms.getAll = function(socket, data, callback) {
 			return callback(err);
 		}
 
-		var rooms = {}; // TODO: websockets.server.sockets.manager.rooms; doesnt work in socket.io 1.x
+		var rooms = websockets.server.sockets.manager.rooms;
 		var socketData = {
 				onlineGuestCount: websockets.getOnlineAnonCount(),
 				onlineRegisteredCount: onlineRegisteredCount,
