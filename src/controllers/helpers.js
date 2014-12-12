@@ -1,6 +1,12 @@
 'use strict';
 
-var nconf = require('nconf');
+var nconf = require('nconf'),
+	async = require('async'),
+	validator = require('validator'),
+
+	translator = require('../../public/src/translator'),
+	categories = require('../categories'),
+	meta = require('../meta');
 
 var helpers = {};
 
@@ -23,14 +29,48 @@ helpers.notAllowed = function(req, res, error) {
 		}
 	} else {
 		if (res.locals.isAPI) {
-			req.session.returnTo = req.url.replace(/^\/api/, '');
+			req.session.returnTo = nconf.get('relative_path') + req.url.replace(/^\/api/, '');
 			res.status(401).json('not-authorized');
 		} else {
-			req.session.returnTo = req.url;
+			req.session.returnTo = nconf.get('relative_path') + req.url;
 			res.redirect(nconf.get('relative_path') + '/login');
 		}
 	}
 };
 
+helpers.buildBreadcrumbs = function(cid, callback) {
+	var breadcrumbs = [];
+
+	async.whilst(function() {
+		return parseInt(cid, 10);
+	}, function(next) {
+		categories.getCategoryFields(cid, ['name', 'slug', 'parentCid'], function(err, data) {
+			if (err) {
+				return next(err);
+			}
+
+			breadcrumbs.unshift({
+				text: validator.escape(data.name),
+				url: nconf.get('relative_path') + '/category/' + data.slug
+			});
+
+			cid = data.parentCid;
+			next();
+		});
+	}, function(err) {
+		if (err) {
+			return callback(err);
+		}
+
+		translator.translate('[[global:home]]', meta.config.defaultLang || 'en_GB', function(translated) {
+			breadcrumbs.unshift({
+				text: translated,
+				url: nconf.get('relative_path') + '/'
+			});
+
+			callback(null, breadcrumbs);
+		});
+	});
+};
 
 module.exports = helpers;
