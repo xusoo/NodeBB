@@ -78,7 +78,7 @@ var socket,
 			var ioParams = {
 				'max reconnection attempts': config.maxReconnectionAttempts,
 				reconnectionDelay : config.reconnectionDelay,
-				path: RELATIVE_PATH + '/socket.io'
+				resource: RELATIVE_PATH.length ? RELATIVE_PATH.slice(1) + '/socket.io' : 'socket.io'
 			};
 
 			socket = io.connect(config.websocketAddress, ioParams);
