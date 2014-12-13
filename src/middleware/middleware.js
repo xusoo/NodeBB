@@ -20,6 +20,7 @@ var app,
 	topics = require('./../topics'),
 	messaging = require('../messaging'),
 	ensureLoggedIn = require('connect-ensure-login'),
+	analytics = require('../analytics'),
 
 	controllers = {
 		api: require('./../controllers/api'),
@@ -38,35 +39,14 @@ middleware.applyCSRF = csrf();
 
 middleware.ensureLoggedIn = ensureLoggedIn.ensureLoggedIn(nconf.get('relative_path') + '/login');
 
-middleware.updateLastOnlineTime = function(req, res, next) {
+middleware.pageView = function(req, res, next) {
 	if (req.user) {
 		user.updateLastOnlineTime(req.user.uid);
 		user.updateOnlineUsers(req.user.uid);
 	}
 
-	db.sortedSetScore('ip:recent', req.ip, function(err, score) {
-		if (err) {
-			return;
-		}
-		var today = new Date();
-		today.setHours(today.getHours(), 0, 0, 0);
-		if (!score) {
-			db.incrObjectField('global', 'uniqueIPCount');
-		}
-		if (!score || score < today.getTime()) {
-			db.sortedSetIncrBy('analytics:uniquevisitors', 1, today.getTime());
-			db.sortedSetAdd('ip:recent', Date.now(), req.ip || 'Unknown');
-		}
-	});
+	analytics.pageView(req.ip);
 
-	next();
-};
-
-middleware.incrementPageViews = function(req, res, next) {
-	var today = new Date();
-	today.setHours(today.getHours(), 0, 0, 0);
-
-	db.sortedSetIncrBy('analytics:pageviews', 1, today.getTime());
 	next();
 };
 
@@ -80,17 +60,17 @@ middleware.redirectToAccountIfLoggedIn = function(req, res, next) {
 		}
 
 		if (res.locals.isAPI) {
-			res.status(302).json('/user/' + userslug);
+			res.status(302).json(nconf.get('relative_path') + '/user/' + userslug);
 		} else {
-			res.redirect('/user/' + userslug);
+			res.redirect(nconf.get('relative_path') + '/user/' + userslug);
 		}
 	});
 };
 
 middleware.redirectToLoginIfGuest = function(req, res, next) {
 	if (!req.user || parseInt(req.user.uid, 10) === 0) {
-		req.session.returnTo = req.url;
-		return res.redirect('/login');
+		req.session.returnTo = nconf.get('relative_path') + req.url;
+		return res.redirect(nconf.get('relative_path') + '/login');
 	} else {
 		next();
 	}
