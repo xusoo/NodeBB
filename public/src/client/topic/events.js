@@ -85,7 +85,7 @@ define('forum/topic/events', [
 		threadTools.setDeleteState(data);
 	}
 
-	function onTopicPurged(tid) {
+	function onTopicPurged(data) {
 		ajaxify.go('category/' + ajaxify.variables.get('category_id'));
 	}
 
@@ -111,7 +111,7 @@ define('forum/topic/events', [
 			app.replaceSelfLinks(editedPostEl.find('a'));
 			editedPostEl.fadeIn(250);
 
-			$(window).trigger('action:posts.edited');
+			$(window).trigger('action:posts.edited', data);
 		});
 
 		if (data.tags && tagsUpdated(data.tags)) {

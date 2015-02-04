@@ -16,6 +16,7 @@ var	async = require('async'),
 	groups = require('../groups'),
 	user = require('../user'),
 	websockets = require('./index'),
+	events = require('../events'),
 	utils = require('../../public/src/utils'),
 
 	SocketPosts = {};
@@ -260,6 +261,8 @@ SocketPosts.edit = function(socket, data, callback) {
 		return callback(new Error('[[error:title-too-long, ' + meta.config.maximumTitleLength + ']]'));
 	} else if (!data.content || data.content.length < parseInt(meta.config.minimumPostLength, 10)) {
 		return callback(new Error('[[error:content-too-short, ' + meta.config.minimumPostLength + ']]'));
+	} else if (data.content.length > parseInt(meta.config.maximumPostLength, 10)) {
+		return callback(new Error('[[error:content-too-long, ' + meta.config.maximumPostLength + ']]'));
 	}
 
 	// uid, pid, title, content, options
@@ -309,8 +312,15 @@ function deleteOrRestore(command, socket, data, callback) {
 			return callback(err);
 		}
 
-		var eventName = command === 'restore' ? 'event:post_restored' : 'event:post_deleted';
+		var eventName = command === 'delete' ? 'event:post_deleted' : 'event:post_restored';
 		websockets.in('topic_' + data.tid).emit(eventName, postData);
+
+		events.log({
+			type: command === 'delete' ? 'post-delete' : 'post-restore',
+			uid: socket.uid,
+			pid: data.pid,
+			ip: socket.ip
+		});
 
 		callback();
 	});
@@ -326,6 +336,13 @@ SocketPosts.purge = function(socket, data, callback) {
 		}
 
 		websockets.in('topic_' + data.tid).emit('event:post_purged', data.pid);
+
+		events.log({
+			type: 'post-purge',
+			uid: socket.uid,
+			pid: data.pid,
+			ip: socket.ip
+		});
 
 		callback();
 	});
@@ -434,23 +451,7 @@ SocketPosts.flag = function(socket, pid, callback) {
 				return next();
 			}
 
-			db.setAdd('uid:' + post.uid + ':flagged_by', socket.uid, function(err) {
-				if (err) {
-					return next(err);
-				}
-				db.setCount('uid:' + post.uid + ':flagged_by', function(err, count) {
-					if (err) {
-						return next(err);
-					}
-
-					if (count >= (meta.config.flagsForBan || 3) && parseInt(meta.config.flagsForBan, 10) !== 0) {
-						var adminUser = require('./admin/user');
-						adminUser.banUser(post.uid, next);
-						return;
-					}
-					next();
-				});
-			});
+			db.setAdd('uid:' + post.uid + ':flagged_by', socket.uid, next);
 		}
 	], callback);
 };
