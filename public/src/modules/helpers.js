@@ -48,9 +48,11 @@
 			templates = window.templates;
 		}
 
-		Object.keys(helpers).forEach(function(helperName) {
-			templates.registerHelper(helperName, helpers[helperName]);
-		});
+		for (var helperName in helpers) {
+			if (helpers.hasOwnProperty(helperName)) {
+				templates.registerHelper(helperName, helpers[helperName]);
+			}
+		}
 	};
 
 	// Use the define() function if we're in AMD land
