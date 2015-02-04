@@ -18,7 +18,7 @@ define('forum/topic/postTools', ['composer', 'share', 'navigator'], function(com
 	};
 
 	PostTools.toggle = function(pid, isDeleted) {
-		var postEl = $('#post-container li[data-pid="' + pid + '"]');
+		var postEl = $('#post-container [data-pid="' + pid + '"]');
 
 		postEl.find('.quote, .favourite, .post_reply, .chat, .flag').toggleClass('hidden', isDeleted);
 		postEl.find('.purge').toggleClass('hidden', !isDeleted);
@@ -227,7 +227,7 @@ define('forum/topic/postTools', ['composer', 'share', 'navigator'], function(com
 
 	function getUserName(button) {
 		var username = '',
-			post = button.parents('li[data-pid]');
+			post = button.parents('[data-pid]');
 
 		if (post.length) {
 			username = post.attr('data-username').replace(/\s/g, '-');
@@ -241,7 +241,7 @@ define('forum/topic/postTools', ['composer', 'share', 'navigator'], function(com
 
 	function deletePost(button, tid) {
 		var pid = getData(button, 'data-pid'),
-			postEl = $('#post-container li[data-pid="' + pid + '"]'),
+			postEl = $('#post-container [data-pid="' + pid + '"]'),
 			action = !postEl.hasClass('deleted') ? 'delete' : 'restore';
 
 		postAction(action, pid, tid);
@@ -338,7 +338,7 @@ define('forum/topic/postTools', ['composer', 'share', 'navigator'], function(com
 	}
 
 	function openChat(button) {
-		var post = button.parents('li.post-row');
+		var post = button.parents('.post-row');
 
 		app.openChat(post.attr('data-username'), post.attr('data-uid'));
 		button.parents('.btn-group').find('.dropdown-toggle').click();
