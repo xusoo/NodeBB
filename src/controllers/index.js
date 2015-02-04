@@ -92,7 +92,9 @@ Controllers.home = function(req, res, next) {
 						categories.getRecentTopicReplies(childCategories, uid, next);
 					}
 				], function(err) {
-					next(err, categoryData);
+					plugins.fireHook('filter:categories.get', categoryData, function(err, data) {
+						next(err, categoryData);
+					});
 				});
 			});
 		}
